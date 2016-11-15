@@ -1,0 +1,41 @@
+any = ...
+lookahead<p> = ...
+
+lowercase = ...
+uppercase = ...
+alpha = lowercase | uppercase
+digit = ...
+
+ascii_lowercase = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" |
+                  "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" |
+                  "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z"
+ascii_uppercase = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" |
+                  "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" |
+                  "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z"
+ascii_alpha = ascii_lowercase | ascii_uppercase
+ascii_digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" |
+              "9"
+
+concat<a, b> = a b
+
+optional<p> = p | ""
+noptional<p> = p | "" -> None
+
+repeat<p> = p repeat<p> | p
+lrepeat<p> = p$x lrepeat<p>$l -> [x] + l | p$x -> [x]
+optionalrepeat<p> = p optionalrepeat<p> | ""
+loptionalrepeat<p> = p$x loptionalrepeat<p>$l -> [x] + l | "" -> []
+
+join<p, d> = p optionalrepeat<d p>
+ljoin<p, d> = p$x loptionalrepeat<d p>$l -> [x] + l
+optionaljoin<p, d> = optional<join<p, d>>
+loptionaljoin<p, d> = noptional<ljoin<p, d>>$x -> [] if x is None else x
+
+not<p> = p -> fail | ""
+
+but<p, x> = not<x> p
+any_but<p> = but<any, p>
+
+surroundleft<l, p> = l p$x -> x
+surroundright<p, r> = p$x r -> x
+surround<l, p, r> = l p$x r -> x
