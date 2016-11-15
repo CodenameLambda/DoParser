@@ -12,11 +12,11 @@ That's it.
 
 ## Using
 
-Don't even think about it, it isn't even remotly ready.
+Don't even think about it, it isn't even remotely ready.
 
 ## Contributing
 
-You can always contribute using Pull requests, or, if you contact me under dodo2998@gmail.com, by being added to the contributers.
+You can always contribute using Pull requests, or, if you contact me under dodo2998@gmail.com, by being added to the contributors.
 
 As the last option requires a lot of trust, you may get (kindly) reminded to use pull requests for now.
 
