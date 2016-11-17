@@ -40,11 +40,12 @@ class StringRule(RuleElement):
         return parser.consume_string(self.string)
 
 
-class Rule(object):
+class Rule(RuleElement):
     def __init__(self, pattern_args: List[Tuple[str, 'Rule']],
                  choices: List[List[RuleElement]]) -> None:
         self.pattern_args = pattern_args  # type: List[Tuple[str, Rule]]
         self.choices = choices  # type: List[List[RuleElement]]
+        super().__init__()
 
     def match(self, parser: 'Parser',
               *args: Tuple['Rule', ...]) -> object:
@@ -53,21 +54,26 @@ class Rule(object):
 
         if args:
             x = {  # type: Dict[str, Rule]
-                   name: default
-                   for name, default in self.pattern_args
-                   if default is not None
-                   }
+                name: default
+                for name, default in self.pattern_args
+                if default is not None
+            }
             x.update({
-                         nd[0]: v
-                         for nd, v in zip(self.pattern_args, args)
-                         })
+                nd[0]: v
+                for nd, v in zip(self.pattern_args, args)
+            })
             return Rule([], [
                 [
-                    args[x[j]] if j in x.keys() else j
+                    x[j.rule]
+                    if (
+                        isinstance(j, IncludedRule) and
+                        j.rule in x.keys()
+                    )
+                    else j
                     for j in i
-                    ]
+                ]
                 for i in self.choices
-                ]).match(parser)
+            ]).match(parser)
         else:
             fails = []  # type: List[ParseFail]
             for i in self.choices:
@@ -83,6 +89,7 @@ class Rule(object):
                     return parser.s[index:parser.index]
                 except ParseFail as e:
                     fails.append(e)
+                parser.index = index
             if len(fails) == 1:
                 raise fails[0]
             else:
@@ -297,14 +304,23 @@ class Parser(object):
         self.s = None  # type: Optional[str]
         self.index = None  # type: Optional[int]
 
-    def parse(self, s: str, p: str) -> object:
+    def parse(self, s: str, p: str, closed: bool=True) -> object:
         self.s = s
         self.index = 0
-        return self.consume_pattern(p)
+        out = self.consume_pattern(p)  # type: object
+        if closed and self.index != len(s):
+            raise ParseFail(
+                "Expected EOF, found {!r}".format(s[self.index:])
+            )
+        return out
 
     def consume_char(self) -> str:
         self.index += 1
-        return self.s[self.index - 1]
+        try:
+            return self.s[self.index - 1]
+        except IndexError:
+            self.index -= 1
+            raise ParseFail("Unexpected EOF")
 
     def consume_string(self, s: str) -> str:
         l = len(s)  # type: int
