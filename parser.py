@@ -229,8 +229,12 @@ _rule_re = re.compile(
 
 
 class Specification(object):
-    def __init__(self, source: str):
-        self.rules = {}
+    def __init__(self, rules):
+        self.rules = rules
+
+    @staticmethod
+    def parse(source: str):
+        rules = {}
         for i in (i.strip() for i in source.split("\n")):
             if i == "":
                 continue
@@ -268,12 +272,13 @@ class Specification(object):
                 else:
                     implementation += j
             if implementation == "...":
-                self.rules[name] = ImplementationBoundRule()
+                rules[name] = ImplementationBoundRule()
             else:
-                self.rules[name] = Rule.parse(
+                rules[name] = Rule.parse(
                     pattern_args,
                     implementation
                 )
+        return Specification(rules)
 
 
 class Parser(object):
