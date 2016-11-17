@@ -214,14 +214,13 @@ class Rule(object):
         return out
 
 
-Implementation = Optional[Callable[['Parser', 'Rule', ...], object]]
+Implementation = Optional[Callable[..., object]]
 
 
 class ImplementationBoundRule(Rule):
     def __init__(self, implementation: Implementation=None) -> None:
         super().__init__([], [])
-        self.implementation = implementation
-        # type: Optional[Callable[['Parser', 'Rule', ...], object]]
+        self.implementation = implementation  # type: Implementation
 
     def match(self,
               parser: 'Parser', *args: Tuple['Rule', ...]) -> object:
