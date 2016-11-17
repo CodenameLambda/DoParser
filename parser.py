@@ -241,7 +241,7 @@ class Specification(object):
         self.rules = rules  # type: Dict[str, Rule]
 
     @staticmethod
-    def parse(source: str) -> None:
+    def parse(source: str) -> 'Specification':
         rules = {}  # type: Dict[str, Rule]
         for i in (i.strip() for i in source.split("\n")):
             if i == "":
