@@ -31,3 +31,7 @@ def numeric(parser):
         return c
     else:
         raise p.ParseFail("Expected numeric character")
+
+
+def fail():
+    raise p.ParseFail("Triggered fail")

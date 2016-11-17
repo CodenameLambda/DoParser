@@ -2,6 +2,10 @@
 
 from typing import Optional, List, Tuple, Dict, Callable
 import re
+import os.path
+import importlib.machinery
+
+import stdlib as stdlib_implementation
 
 
 class ParseFail(Exception):
@@ -323,51 +327,55 @@ class Specification(object):
     @staticmethod
     def parse(source: str) -> 'Specification':
         rules = {}  # type: Dict[str, Rule]
+        current = ""
         for i in (i.strip() for i in source.split("\n")):
             if i == "":
                 continue
-            if not _rule_re.match(i):
-                raise SyntaxError("formal error")
-            pattern_args = []  # type: List[Tuple[str, Rule]]
-            current_parg = [""]  # type: List[Optional[str]]
-            mode = "name"  # type: str
-            name = ""  # type: str
-            implementation = ""  # type: str
-            for j in i:
-                if mode == "name":
-                    if j == "<":
-                        mode = "pattern_args"
-                    elif j == "=":
-                        mode = "implementation"
-                    elif not j.isspace():
-                        name += j
-                elif mode == "pattern_args":
-                    if j == ">":
-                        mode = "preimplementation"
-                    elif j == "=":
-                        current_parg.append("")
-                    elif j == ",":
-                        if len(current_parg) < 2:
-                            current_parg.append(None)
-                        pattern_args.append(tuple(current_parg))
-                        current_parg = [""]
-                    elif not j.isspace():
-                        current_parg[-1] += j
-                elif mode == "preimplementation":
-                    if j == "=":
-                        if len(current_parg) < 2:
-                            current_parg.append(None)
-                        pattern_args.append(tuple(current_parg))
-                        mode = "implementation"
-                else:
-                    implementation += j
-            if implementation == "...":
-                rules[name] = ImplementationBoundRule(name)
+            if i[0].isspace():
+                current += i
             else:
-                rules[name] = Rule.parse(
-                    pattern_args,
-                    implementation
-                )
+                if not _rule_re.match(current):
+                    raise SyntaxError("formal error")
+                pattern_args = []  # type: List[Tuple[str, Rule]]
+                current_parg = [""]  # type: List[Optional[str]]
+                mode = "name"  # type: str
+                name = ""  # type: str
+                implementation = ""  # type: str
+                for j in current:
+                    if mode == "name":
+                        if j == "<":
+                            mode = "pattern_args"
+                        elif j == "=":
+                            mode = "implementation"
+                        elif not j.isspace():
+                            name += j
+                    elif mode == "pattern_args":
+                        if j == ">":
+                            mode = "preimplementation"
+                        elif j == "=":
+                            current_parg.append("")
+                        elif j == ",":
+                            if len(current_parg) < 2:
+                                current_parg.append(None)
+                            pattern_args.append(tuple(current_parg))
+                            current_parg = [""]
+                        elif not j.isspace():
+                            current_parg[-1] += j
+                    elif mode == "preimplementation":
+                        if j == "=":
+                            if len(current_parg) < 2:
+                                current_parg.append(None)
+                            pattern_args.append(tuple(current_parg))
+                            mode = "implementation"
+                    else:
+                        implementation += j
+                if implementation == "...":
+                    rules[name] = ImplementationBoundRule(name)
+                else:
+                    rules[name] = Rule.parse(
+                        pattern_args,
+                        implementation
+                    )
         return Specification(rules)
 
 
@@ -418,3 +426,63 @@ class Parser(object):
         x = self.consume_pattern(pattern)
         self.index = jump_back
         return x
+
+
+stdlib_specification = None  # type: Optional[Specification]
+
+
+def init() -> None:
+    global stdlib_specification
+
+    f = open("stdlib.dparse", "r")
+    stdlib_specification = Specification.parse(f.read())
+    f.close()
+
+
+class File(object):
+    def __init__(self, path: str,
+                 context: Optional[Dict[str, object]]=None) -> None:
+        if stdlib_specification is None:
+            init()
+        out = stdlib_specification.rules.copy()
+        todo = [path]
+        if context is None:
+            context = {}
+        else:
+            context = context.copy()
+        while todo:
+            new_todo = []
+            for i in todo:
+                f = open(i)
+                source = ""
+                for j in f.readlines():
+                    if j.startswith("include "):
+                        x = path.rsplit("/", 2)
+                        if len(x) == 1:
+                            x = ["."]
+                        new_todo.append(
+                            os.path.join(
+                                x[0],
+                                j[len("include "):].strip()
+                            )
+                        )
+                    else:
+                        source += j + "\n"
+                out.update(Specification.parse(source).rules)
+                pyfile = i.rsplit(".", 2)[0] + ".py"
+                if os.path.exists(pyfile):
+                    importlib.machinery.SourceFileLoader(
+                        i.rsplit(".", 2)[0],
+                        pyfile
+                    )
+            todo = new_todo
+        self.parser = Parser(Specification(out))
+        for i in dir(stdlib_implementation):
+            if not i.startswith("_"):
+                self.parser.context[i] = getattr(
+                    stdlib_implementation,
+                    i
+                )
+
+    def parse(self, s):
+        self.parser.parse(s, "main")
