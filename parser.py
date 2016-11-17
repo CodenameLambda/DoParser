@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from typing import Optional, List, Tuple, Dict, Callable
 import re
 
 
@@ -8,20 +9,20 @@ class ParseFail(Exception):
 
 
 class RuleElement(object):
-    def __init__(self, var):
-        self.var = var
+    def __init__(self, var: Optional[str] = None) -> None:
+        self.var = var  # type: Optional[str]
 
-    def match(self, parser):
+    def match(self, parser: 'Parser') -> object:
         raise NotImplemented()
 
 
 class IncludedRule(RuleElement):
-    def __init__(self, rule, pattern_args):
-        self.rule = rule
-        self.pattern_args = pattern_args
-        super().__init__(None)
+    def __init__(self, rule: str, pattern_args: List['Rule']) -> None:
+        self.rule = rule  # type: str
+        self.pattern_args = pattern_args  # type: List['Rule']
+        super().__init__()
 
-    def match(self, parser):
+    def match(self, parser: 'Parser') -> object:
         return (
             parser.specification.rules[self.rule].match(
                 parser,
@@ -31,46 +32,48 @@ class IncludedRule(RuleElement):
 
 
 class StringRule(RuleElement):
-    def __init__(self, s):
-        self.string = s
-        super().__init__(None)
+    def __init__(self, s: str) -> None:
+        self.string = s  # type: str
+        super().__init__()
 
-    def match(self, parser):
+    def match(self, parser: 'Parser') -> str:
         return parser.consume_string(self.string)
 
 
 class Rule(object):
-    def __init__(self, pattern_args, choices):
-        self.pattern_args = pattern_args
-        self.choices = choices
+    def __init__(self, pattern_args: List[Tuple[str, 'Rule']],
+                 choices: List[List[RuleElement]]) -> None:
+        self.pattern_args = pattern_args  # type: List[Tuple[str, Rule]]
+        self.choices = choices  # type: List[List[RuleElement]]
 
-    def match(self, parser, *args):
+    def match(self, parser: 'Parser',
+              *args: Tuple['Rule', ...]) -> object:
         if len(args) != len(self.pattern_args):
             raise TypeError()
 
         if args:
-            x = {
-                name: default
-                for name, default in self.pattern_args
-                if default is not None
-            }
+            x = {  # type: Dict[str, Rule]
+                   name: default
+                   for name, default in self.pattern_args
+                   if default is not None
+                   }
             x.update({
-                nd[0]: v
-                for nd, v in zip(self.pattern_args, args)
-            })
+                         nd[0]: v
+                         for nd, v in zip(self.pattern_args, args)
+                         })
             return Rule([], [
                 [
                     args[x[j]] if j in x.keys() else j
                     for j in i
-                ]
+                    ]
                 for i in self.choices
-            ]).parse(parser, *args)
+                ]).match(parser)
         else:
-            fails = []
+            fails = []  # type: List[ParseFail]
             for i in self.choices:
-                index = parser.index
+                index = parser.index  # type: int
                 try:
-                    varspace = {}
+                    varspace = {}  # type: Dict[str, object]
                     for j in i:
                         if j.var is not None:
                             varspace[j.var] = j.match(parser)
@@ -95,23 +98,24 @@ class Rule(object):
                 )
 
     @staticmethod
-    def parse(pattern_args, source, *, no_choice=False):
+    def parse(pattern_args: List[Tuple[str, 'Rule']], source: str, *,
+              no_choice: bool = False) -> 'Rule':
         if source.strip() == "...":
             return ImplementationBoundRule()
-        out = Rule(pattern_args, [])
+        out = Rule(pattern_args, [])  # type: Rule
         if source.strip() == "":
             raise SyntaxError("rule source can't be empty.\n"
                               "Tip: Use '\"\"' instead.")
         try:
-            current = []
-            index = 0
+            current = []  # type: List[RuleElement]
+            index = 0  # type: int
             while index < len(source):
-                i = source[index]
+                i = source[index]  # type: str
                 if i in "\"'":
-                    c = ""
-                    index2 = index + 1
+                    c = ""  # type: str
+                    index2 = index + 1  # type: int
                     while True:
-                        j = source[index2]
+                        j = source[index2]  # type: str
                         if j == i:
                             current.append(StringRule(c))
                             break
@@ -142,10 +146,10 @@ class Rule(object):
                     current = []
                     index += 1
                 elif i == "$":
-                    c = ""
-                    index2 = index + 1
+                    c = ""  # type: str
+                    index2 = index + 1  # type: int
                     while index2 < len(source):
-                        j = source[index2]
+                        j = source[index2]  # type: str
                         if not (j.isalpha() or j.isdigit()):
                             if c == "":
                                 raise SyntaxError("empty identifier")
@@ -155,11 +159,11 @@ class Rule(object):
                             index2 += 1
                     index = index2
                 elif i == "<":
-                    ps = []
-                    c = ""
-                    index2 = index + 1
+                    ps = []  # List[str]
+                    c = ""  # type: str
+                    index2 = index + 1  # type: int
                     while True:
-                        j = source[index2]
+                        j = source[index2]  # type: str
                         if j == ">":
                             if c == "":
                                 raise SyntaxError("too many commas")
@@ -167,10 +171,10 @@ class Rule(object):
                                 current[-1].pattern_args += [
                                     Rule.parse([], m, no_choice=True)
                                     for m in ps + [c]
-                                ]
+                                    ]
                             else:
                                 raise SyntaxError(
-                                    "a string doesn't have template "
+                                    "a string can't have template "
                                     "arguments"
                                 )
                             break
@@ -187,10 +191,10 @@ class Rule(object):
                 elif i.isspace():
                     index += 1
                 else:
-                    name = i
-                    index2 = index + 1
+                    name = i  # type: str
+                    index2 = index + 1  # type: int
                     while index2 < len(source):
-                        j = source[index2]
+                        j = source[index2]  # type: str
                         if j.isspace() or j in "\"'<>|":
                             current.append(IncludedRule(name, []))
                             break
@@ -200,7 +204,7 @@ class Rule(object):
                     if index2 == len(source):
                         current.append(IncludedRule(name, []))
                     index = index2
-                # TODO: Parse actions
+                    # TODO: Parse actions
             out.choices.append(current)
             if no_choice and len(out.choices) != 1:
                 raise SyntaxError("choices are not allowed")
@@ -211,11 +215,16 @@ class Rule(object):
 
 
 class ImplementationBoundRule(Rule):
-    def __init__(self, implementation=None):
-        super().__init__([], "")
+    def __init__(self,
+                 implementation:
+                 Optional[Callable['Parser', 'Rule', ...]]=None
+                 ) -> None:
+        super().__init__([], [])
+        # type: Optional[Callable['Parser', 'Rule', ...]]
         self.implementation = implementation
 
-    def match(self, parser, *args):
+    def match(self,
+              parser: 'Parser', *args: Tuple['Rule', ...]) -> object:
         self.implementation(parser, *args)
 
 
@@ -229,22 +238,22 @@ _rule_re = re.compile(
 
 
 class Specification(object):
-    def __init__(self, rules):
-        self.rules = rules
+    def __init__(self, rules: Dict[str, Rule]) -> None:
+        self.rules = rules  # type: Dict[str, Rule]
 
     @staticmethod
-    def parse(source: str):
-        rules = {}
+    def parse(source: str) -> None:
+        rules = {}  # type: Dict[str, Rule]
         for i in (i.strip() for i in source.split("\n")):
             if i == "":
                 continue
             if not _rule_re.match(i):
                 raise SyntaxError("formal error")
-            pattern_args = []
-            current_parg = [""]
-            mode = "name"
-            name = ""
-            implementation = ""
+            pattern_args = []  # type: List[Tuple[str, Rule]]
+            current_parg = [""]  # type: List[Optional[str]]
+            mode = "name"  # type: str
+            name = ""  # type: str
+            implementation = ""  # type: str
             for j in i:
                 if mode == "name":
                     if j == "<":
@@ -267,6 +276,8 @@ class Specification(object):
                         current_parg[-1] += j
                 elif mode == "preimplementation":
                     if j == "=":
+                        if len(current_parg) < 2:
+                            current_parg.append(None)
                         pattern_args.append(tuple(current_parg))
                         mode = "implementation"
                 else:
@@ -282,25 +293,22 @@ class Specification(object):
 
 
 class Parser(object):
-    def __init__(self, specification):
-        self.specification = specification
-        self.s = None
-        self.index = None
-        self.jump_back = None
-        self.choices = None
+    def __init__(self, specification: Specification) -> None:
+        self.specification = specification  # type: Specification
+        self.s = None  # type: Optional[str]
+        self.index = None  # type: Optional[int]
 
-    def parse(self, s, p):
+    def parse(self, s: str, p: str) -> object:
         self.s = s
         self.index = 0
-        self.choices = []
         return self.consume_pattern(p)
 
-    def consume_char(self):
+    def consume_char(self) -> str:
         self.index += 1
         return self.s[self.index - 1]
 
-    def consume_string(self, s):
-        l = len(s)
+    def consume_string(self, s: str) -> str:
+        l = len(s)  # type: int
         self.index += l
         if self.s[self.index - l:self.index] != s:
             raise ParseFail(
@@ -312,11 +320,12 @@ class Parser(object):
         else:
             return s
 
-    def consume_pattern(self, pattern, *args):
+    def consume_pattern(self, pattern: str,
+                        *args: Tuple[Rule, ...]) -> object:
         return self.specification.rules[pattern].match(self, *args)
 
-    def _lookahead(self, pattern):
-        jump_back = self.index
+    def _lookahead(self, pattern: str) -> object:
+        jump_back = self.index  # type: int
         x = self.consume_pattern(pattern)
         self.index = jump_back
         return x
