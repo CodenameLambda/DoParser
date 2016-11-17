@@ -23,12 +23,15 @@ class IncludedRule(RuleElement):
         super().__init__()
 
     def match(self, parser: 'Parser') -> object:
-        return (
-            parser.specification.rules[self.rule].match(
-                parser,
-                *self.pattern_args
+        try:
+            return (
+                parser.specification.rules[self.rule].match(
+                    parser,
+                    *self.pattern_args
+                )
             )
-        )
+        except KeyError:
+            raise NameError("rule {!r} unknown".format(self.rule))
 
 
 class StringRule(RuleElement):
@@ -40,11 +43,23 @@ class StringRule(RuleElement):
         return parser.consume_string(self.string)
 
 
+def _transmit_var(r: 'Rule', source: 'RuleElement') -> 'Rule':
+    if source.var is None:
+        return r
+    else:
+        copy = Rule(r.pattern_args, r.choices, r.actions)
+        # type: 'Rule'
+        copy.var = source.var
+        return copy
+
+
 class Rule(RuleElement):
     def __init__(self, pattern_args: List[Tuple[str, 'Rule']],
-                 choices: List[List[RuleElement]]) -> None:
+                 choices: List[List[RuleElement]],
+                 actions: List[Optional[str]]) -> None:
         self.pattern_args = pattern_args  # type: List[Tuple[str, Rule]]
         self.choices = choices  # type: List[List[RuleElement]]
+        self.actions = actions
         super().__init__()
 
     def match(self, parser: 'Parser',
@@ -64,7 +79,7 @@ class Rule(RuleElement):
             })
             return Rule([], [
                 [
-                    x[j.rule]
+                    _transmit_var(x[j.rule], j)
                     if (
                         isinstance(j, IncludedRule) and
                         j.rule in x.keys()
@@ -73,20 +88,28 @@ class Rule(RuleElement):
                     for j in i
                 ]
                 for i in self.choices
-            ]).match(parser)
+            ], self.actions).match(parser)
         else:
             fails = []  # type: List[ParseFail]
-            for i in self.choices:
+            for i, action in zip(self.choices, self.actions):
                 index = parser.index  # type: int
                 try:
                     varspace = {}  # type: Dict[str, object]
+                    last = None
                     for j in i:
                         if j.var is not None:
-                            varspace[j.var] = j.match(parser)
+                            last = varspace[j.var] = j.match(parser)
                         else:
-                            j.match(parser)
-                    # TODO: Actions
-                    return parser.s[index:parser.index]
+                            last = j.match(parser)
+                    if action is None:
+                        if len(i) != 1:
+                            return parser.s[index:parser.index]
+                        else:
+                            return last
+                    else:
+                        namespace = parser.context.copy()
+                        namespace.update(varspace)
+                        return eval(action, namespace)
                 except ParseFail as e:
                     fails.append(e)
                 parser.index = index
@@ -109,7 +132,7 @@ class Rule(RuleElement):
               no_choice: bool = False) -> 'Rule':
         if source.strip() == "...":
             return ImplementationBoundRule()
-        out = Rule(pattern_args, [])  # type: Rule
+        out = Rule(pattern_args, [], [])  # type: Rule
         if source.strip() == "":
             raise SyntaxError("rule source can't be empty.\n"
                               "Tip: Use '\"\"' instead.")
@@ -150,6 +173,7 @@ class Rule(RuleElement):
                     index = index2 + 1
                 elif i == "|":
                     out.choices.append(current)
+                    out.actions.append(None)
                     current = []
                     index += 1
                 elif i == "$":
@@ -161,6 +185,7 @@ class Rule(RuleElement):
                             if c == "":
                                 raise SyntaxError("empty identifier")
                             current[-1].var = c
+                            break
                         else:
                             c += j
                             index2 += 1
@@ -178,7 +203,7 @@ class Rule(RuleElement):
                                 current[-1].pattern_args += [
                                     Rule.parse([], m, no_choice=True)
                                     for m in ps + [c]
-                                    ]
+                                ]
                             else:
                                 raise SyntaxError(
                                     "a string can't have template "
@@ -197,12 +222,61 @@ class Rule(RuleElement):
                     index = index2 + 1
                 elif i.isspace():
                     index += 1
+                elif source[index:index + 2] == "->":
+                    action = ""
+                    index2 = index + 2
+                    while source[index2] != "{":
+                        if not source[index2].isspace():
+                            raise SyntaxError(
+                                "A '->' should be followed by a '{'"
+                            )
+                        index2 += 1
+                    opened = 1
+                    index2 += 1
+                    j = source[index2]
+                    while opened > 0:
+                        if j == "{":
+                            opened += 1
+                        elif j == "}":
+                            opened -= 1
+                        else:
+                            if j in "'\"":
+                                source += j
+                                escaped = False
+                                index3 = index2 + 1
+                                while escaped or source[index3] != j:
+                                    m = source[index3]
+                                    action += m
+                                    if not escaped and m == "\\":
+                                        escaped = True
+                                    elif escaped:
+                                        escaped = False
+                                    index3 += 1
+                                index2 = index3
+                        action += j
+                        index2 += 1
+                        if opened > 0 or index2 < len(source):
+                            j = source[index2]
+                    while j != "|" and index2 < len(source):
+                        if not j.isspace():
+                            raise SyntaxError(
+                                "Nothing should follow an action"
+                            )
+                        index2 += 1
+                        j = source[index2]
+                    out.actions.append(
+                        # compile(action[:-1], '<string>', 'eval')
+                        action[:-1]  # for debug purposes
+                    )
+                    out.choices.append(current)
+                    current = []
+                    index = index2
                 else:
                     name = i  # type: str
                     index2 = index + 1  # type: int
                     while index2 < len(source):
                         j = source[index2]  # type: str
-                        if j.isspace() or j in "\"'<>|":
+                        if j.isspace() or j in "\"'<>|$-":
                             current.append(IncludedRule(name, []))
                             break
                         else:
@@ -211,12 +285,13 @@ class Rule(RuleElement):
                     if index2 == len(source):
                         current.append(IncludedRule(name, []))
                     index = index2
-                    # TODO: Parse actions
-            out.choices.append(current)
+            if current:
+                out.choices.append(current)
+                out.actions.append(None)
             if no_choice and len(out.choices) != 1:
                 raise SyntaxError("choices are not allowed")
         except IndexError:
-            raise SyntaxError("unexpected end")
+            raise SyntaxError("unexpected EOF")
 
         return out
 
@@ -226,7 +301,7 @@ Implementation = Optional[Callable[..., object]]
 
 class ImplementationBoundRule(Rule):
     def __init__(self, implementation: Implementation=None) -> None:
-        super().__init__([], [])
+        super().__init__([], [], [])
         self.implementation = implementation  # type: Implementation
 
     def match(self,
@@ -303,6 +378,7 @@ class Parser(object):
         self.specification = specification  # type: Specification
         self.s = None  # type: Optional[str]
         self.index = None  # type: Optional[int]
+        self.context = {}  # type: Dict[str, Callable[..., object]]
 
     def parse(self, s: str, p: str, closed: bool=True) -> object:
         self.s = s

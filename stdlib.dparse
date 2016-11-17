@@ -1,6 +1,10 @@
 any = ...
 lookahead<p> = ...
 
+and<a, b> = lookahead<a> b
+or<a, b> = a | b
+not<p> = p -> {fail()} | ""
+
 lowercase = ...
 uppercase = ...
 alpha = lowercase | uppercase
@@ -31,8 +35,6 @@ ljoin<p, d> = p$x loptionalrepeat<d p>$l -> {[x] + l}
 optionaljoin<p, d> = optional<join<p, d>>
 loptionaljoin<p, d> = noptional<ljoin<p, d>>$x
                           -> {[] if x is None else x}
-
-not<p> = p -> {fail()} | ""
 
 but<p, x> = not<x> p
 any_but<p> = but<any, p>
