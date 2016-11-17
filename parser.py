@@ -7,6 +7,38 @@ class ParseFail(Exception):
     pass
 
 
+class RuleElement(object):
+    def __init__(self, var):
+        self.var = var
+
+    def match(self, parser):
+        raise NotImplemented()
+
+
+class IncludedRule(RuleElement):
+    def __init__(self, rule, pattern_args):
+        self.rule = rule
+        self.pattern_args = pattern_args
+        super().__init__(None)
+
+    def match(self, parser):
+        return (
+            parser.specification.rules[self.rule].match(
+                parser,
+                *self.pattern_args
+            )
+        )
+
+
+class StringRule(RuleElement):
+    def __init__(self, s):
+        self.string = s
+        super().__init__(None)
+
+    def match(self, parser):
+        return parser.consume_string(self.string)
+
+
 class Rule(object):
     def __init__(self, pattern_args, choices):
         self.pattern_args = pattern_args
@@ -40,12 +72,12 @@ class Rule(object):
 
     @staticmethod
     def parse(pattern_args, source, *, no_choice=False):
-        self = Rule(pattern_args, [])
-        current = []
+        out = Rule(pattern_args, [])
         if source.strip() == "":
             raise SyntaxError("rule source can't be empty.\n"
                               "Tip: Use '\"\"' instead.")
         try:
+            current = []
             index = 0
             while index < len(source):
                 i = source[index]
@@ -55,7 +87,7 @@ class Rule(object):
                     while True:
                         j = source[index2]
                         if j == i:
-                            current.append((True, c, [], None))
+                            current.append(StringRule(c))
                             break
                         elif j == "\\":
                             if source[index2 + 1] == "x":
@@ -80,7 +112,7 @@ class Rule(object):
                             index2 += 1
                     index = index2 + 1
                 elif i == "|":
-                    self.choices.append(current)
+                    out.choices.append(current)
                     current = []
                     index += 1
                 elif i == "$":
@@ -91,7 +123,7 @@ class Rule(object):
                         if not (j.isalpha() or j.isdigit()):
                             if c == "":
                                 raise SyntaxError("empty identifier")
-                            current[-1] = current[-1][:-1] + (c,)
+                            current[-1].var = c
                         else:
                             c += j
                             index2 += 1
@@ -105,11 +137,16 @@ class Rule(object):
                         if j == ">":
                             if c == "":
                                 raise SyntaxError("too many commas")
-                            l = current[-1][2]
-                            l += [
-                                Rule.parse([], m, no_choice=True)
-                                for m in ps + [c]
+                            if isinstance(current[-1], IncludedRule):
+                                current[-1].pattern_args += [
+                                    Rule.parse([], m, no_choice=True)
+                                    for m in ps + [c]
                                 ]
+                            else:
+                                raise SyntaxError(
+                                    "a string doesn't have template "
+                                    "arguments"
+                                )
                             break
                         elif j == ",":
                             if c == "":
@@ -129,19 +166,21 @@ class Rule(object):
                     while index2 < len(source):
                         j = source[index2]
                         if j.isspace() or j in "\"'<>|":
-                            current.append((False, name, [], None))
+                            current.append(IncludedRule(name, []))
                             break
                         else:
                             name += j
                             index2 += 1
                     if index2 == len(source):
-                        current.append((False, name, [], None))
+                        current.append(IncludedRule(name, []))
                     index = index2
-            self.choices.append(current)
-            if no_choice and len(self.choices) != 1:
+            out.choices.append(current)
+            if no_choice and len(out.choices) != 1:
                 raise SyntaxError("choices are not allowed")
         except IndexError:
             raise SyntaxError("unexpected end")
+
+        return out
 
 
 class ImplementationBoundRule(Rule):
@@ -238,6 +277,8 @@ class Parser(object):
                     self.s[self.index - l:self.index]
                 )
             )
+        else:
+            return s
 
     def consume_pattern(self, pattern, *args):
         return self.specification.rules[pattern].match(self, *args)
