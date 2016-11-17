@@ -130,8 +130,6 @@ class Rule(RuleElement):
     @staticmethod
     def parse(pattern_args: List[Tuple[str, 'Rule']], source: str, *,
               no_choice: bool = False) -> 'Rule':
-        if source.strip() == "...":
-            return ImplementationBoundRule()
         out = Rule(pattern_args, [], [])  # type: Rule
         if source.strip() == "":
             raise SyntaxError("rule source can't be empty.\n"
@@ -300,13 +298,13 @@ Implementation = Optional[Callable[..., object]]
 
 
 class ImplementationBoundRule(Rule):
-    def __init__(self, implementation: Implementation=None) -> None:
+    def __init__(self, name: str) -> None:
         super().__init__([], [], [])
-        self.implementation = implementation  # type: Implementation
+        self.name = name  # type: str
 
     def match(self,
               parser: 'Parser', *args: Tuple['Rule', ...]) -> object:
-        self.implementation(parser, *args)
+        parser.context[self.name](parser, *args)
 
 
 _rule_re = re.compile(
@@ -364,7 +362,7 @@ class Specification(object):
                 else:
                     implementation += j
             if implementation == "...":
-                rules[name] = ImplementationBoundRule()
+                rules[name] = ImplementationBoundRule(name)
             else:
                 rules[name] = Rule.parse(
                     pattern_args,
