@@ -36,11 +36,7 @@ class Rule(object):
         else:
             for i in self.choices:
                 for j in i:
-                    pass # TODO
-                    # if (works):
-                    #     return x
-                    # else:
-                    #     break
+                    pass  # TODO
 
     @staticmethod
     def parse(pattern_args, source, *, no_choice=False):
@@ -231,6 +227,17 @@ class Parser(object):
     def consume_char(self):
         self.index += 1
         return self.s[self.index - 1]
+
+    def consume_string(self, s):
+        l = len(s)
+        self.index += l
+        if self.s[self.index - l:self.index] != s:
+            raise ParseFail(
+                "Expected {!r}, saw {!r}".format(
+                    s,
+                    self.s[self.index - l:self.index]
+                )
+            )
 
     def consume_pattern(self, pattern, *args):
         return self.specification.rules[pattern].match(self, *args)
