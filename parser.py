@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import re
 
 
@@ -224,7 +225,6 @@ class Parser(object):
     def parse(self, s, p):
         self.s = s
         self.index = 0
-        self.jump_back = []
         self.choices = []
         return self.consume_pattern(p)
 
@@ -236,8 +236,7 @@ class Parser(object):
         return self.specification.rules[pattern].match(self, *args)
 
     def _lookahead(self, pattern):
-        self.jump_back += [self.index]
+        jump_back = self.index
         x = self.consume_pattern(pattern)
-        self.index = self.jump_back[-1]
-        del self.jump_back[-1]
+        self.index = jump_back
         return x
