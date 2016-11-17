@@ -66,12 +66,38 @@ class Rule(object):
                 for i in self.choices
             ]).parse(parser, *args)
         else:
+            fails = []
             for i in self.choices:
-                for j in i:
-                    pass  # TODO
+                index = parser.index
+                try:
+                    varspace = {}
+                    for j in i:
+                        if j.var is not None:
+                            varspace[j.var] = j.match(parser)
+                        else:
+                            j.match(parser)
+                    # TODO: Actions
+                    return parser.s[index:parser.index]
+                except ParseFail as e:
+                    fails.append(e)
+            if len(fails) == 1:
+                raise fails[0]
+            else:
+                raise ParseFail(
+                    "All alternatives failed:\n    {}".format(
+                        "\n    ".join(
+                            i.args[0]
+                            if len(i.args) != 0
+                            else "(unknown)"
+                            for i in fails
+                        )
+                    )
+                )
 
     @staticmethod
     def parse(pattern_args, source, *, no_choice=False):
+        if source.strip() == "...":
+            return ImplementationBoundRule()
         out = Rule(pattern_args, [])
         if source.strip() == "":
             raise SyntaxError("rule source can't be empty.\n"
@@ -174,6 +200,7 @@ class Rule(object):
                     if index2 == len(source):
                         current.append(IncludedRule(name, []))
                     index = index2
+                # TODO: Parse actions
             out.choices.append(current)
             if no_choice and len(out.choices) != 1:
                 raise SyntaxError("choices are not allowed")
