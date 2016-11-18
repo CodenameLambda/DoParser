@@ -9,6 +9,10 @@ def lookahead(parser, pattern):
     return parser._lookahead(pattern)
 
 
+def eof(parser):
+    return parser.consume_eof()
+
+
 def lowercase(parser):
     c = parser.consume_char()
     if c.islower():
@@ -34,4 +38,4 @@ def numeric(parser):
 
 
 def fail():
-    raise p.ParseFail("Triggered fail")
+    raise p.TriggeredParseFail("Triggered fail")
